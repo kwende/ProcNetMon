@@ -16,8 +16,10 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <iphlpapi.h>
 
 std::map<int, std::string> mp;
+int pid = 4064; 
 
 // you can use logman to find this. 
 // Microsoft-Windows-TCPIP
@@ -38,7 +40,7 @@ void WINAPI OnEvent(PEVENT_RECORD pEventRecord)
 
 	//wevtutil gp Microsoft-Windows-TCPIP /ge /gm:true > TcpIpProviderManifest.xml
 	// for the ids. 
-	if(procId == 28792)
+	if(procId == pid)
 	{
 		//printf("Event Id: %d\n", id);
 
@@ -84,7 +86,7 @@ void WINAPI OnEvent(PEVENT_RECORD pEventRecord)
 					wprintf(L"\tPropertyName: %ws\n", propertyName);
 					wprintf(L"\tLength: %d\n", eventProperty->length);
 					wprintf(L"\tInType: %u\n", eventProperty->nonStructType.InType);*/
-					printf("\tProperty type: %d\n", eventProperty->nonStructType.InType); 
+					//printf("\tProperty type: %d\n", eventProperty->nonStructType.InType); 
 					switch (eventProperty->nonStructType.InType)
 					{
 					case TDH_INTYPE_BINARY: // binary data type
@@ -146,22 +148,12 @@ DWORD WINAPI ThreadProc(LPVOID lpParameter)
 	return 0; 
 }
 
-
-void main(void)
+void StartMonitoring()
 {
-	std::ifstream input("parsed.txt"); 
+	EVENT_TRACE_LOGFILEA traceSession;
+	::ZeroMemory(&traceSession, sizeof(traceSession));
 
-	std::string eventName; 
-	int id; 
-	while (input >> eventName >> id)
-	{
-		mp.insert(std::pair<int,std::string>(id, eventName.substr(0, eventName.size()-1)));
-	}
-
-	EVENT_TRACE_LOGFILEA traceSession; 
-	::ZeroMemory(&traceSession, sizeof(traceSession)); 
-
-	LPSTR name = (LPSTR)"duudi"; 
+	LPSTR name = (LPSTR)"duudi";
 
 	// The following defines the session......
 	// 
@@ -170,37 +162,37 @@ void main(void)
 	// this is either the session name, or the path of the log file we're reading. 
 	traceSession.LoggerName = name;
 	// this is the callback. 
-	traceSession.EventRecordCallback = (PEVENT_RECORD_CALLBACK)OnEvent; 
+	traceSession.EventRecordCallback = (PEVENT_RECORD_CALLBACK)OnEvent;
 
 	// now we're going to initialize structures to start the tracing session. 
 	//
 	// we're going to heap alloc this, so lets get the size. should be the size of the structure + my name. 
 	// the extra char at the end allows for null termination. 
-	ULONG tracePropertiesBufferSize = sizeof(EVENT_TRACE_PROPERTIES) + sizeof(name) + sizeof(CHAR); 
+	ULONG tracePropertiesBufferSize = sizeof(EVENT_TRACE_PROPERTIES) + sizeof(name) + sizeof(CHAR);
 	// heap alloc on local heap. 
-	PEVENT_TRACE_PROPERTIES ptrEventTraceProps = (PEVENT_TRACE_PROPERTIES)::LocalAlloc(LPTR, tracePropertiesBufferSize); 
+	PEVENT_TRACE_PROPERTIES ptrEventTraceProps = (PEVENT_TRACE_PROPERTIES)::LocalAlloc(LPTR, tracePropertiesBufferSize);
 	if (ptrEventTraceProps)
 	{
-		::ZeroMemory(ptrEventTraceProps, tracePropertiesBufferSize); 
+		::ZeroMemory(ptrEventTraceProps, tracePropertiesBufferSize);
 
 		// WNODE information. 
 		// https://learn.microsoft.com/en-us/windows/win32/etw/wnode-header
-		ptrEventTraceProps->Wnode.BufferSize = tracePropertiesBufferSize; 
-		ptrEventTraceProps->Wnode.ClientContext = 2; 
-		ptrEventTraceProps->Wnode.Flags = WNODE_FLAG_TRACED_GUID; 
+		ptrEventTraceProps->Wnode.BufferSize = tracePropertiesBufferSize;
+		ptrEventTraceProps->Wnode.ClientContext = 2;
+		ptrEventTraceProps->Wnode.Flags = WNODE_FLAG_TRACED_GUID;
 
 		// EVENT_TRACE_PROPERTIES information. 
 		// https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_properties
 		// https://learn.microsoft.com/en-us/windows/win32/etw/logging-mode-constants
-		ptrEventTraceProps->LogFileMode = EVENT_TRACE_REAL_TIME_MODE; 
-		ptrEventTraceProps->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES); 
+		ptrEventTraceProps->LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+		ptrEventTraceProps->LoggerNameOffset = sizeof(EVENT_TRACE_PROPERTIES);
 
 		// start the tracing session. 
-		TRACEHANDLE startTraceHandle; 
-		auto response = ::StartTraceA(&startTraceHandle, name, ptrEventTraceProps); 
+		TRACEHANDLE startTraceHandle;
+		auto response = ::StartTraceA(&startTraceHandle, name, ptrEventTraceProps);
 		if (response == ERROR_SUCCESS)
 		{
-			std::cout << "Started tracing successfully" << std::endl; 
+			std::cout << "Started tracing successfully" << std::endl;
 
 			// now that we've opened up our tracer, we need to start tracing the thing we want. 
 			// https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-enabletraceex2
@@ -213,7 +205,7 @@ void main(void)
 				NULL, // no additional keyword flags
 				0, // zero-latency
 				NULL // no other properties. 
-			); 
+			);
 			if (response == ERROR_SUCCESS)
 			{
 				std::cout << "Tcp/IP trace has been enabled." << std::endl;
@@ -221,10 +213,10 @@ void main(void)
 				// oddly enough, we now need to call "OpenTrace" to start processing events. 
 				// i suppose we can think of it as opening the log file, despite it being
 				// one we're creating on-the-fly
-				TRACEHANDLE openedTraceHandle = ::OpenTraceA(&traceSession); 
+				TRACEHANDLE openedTraceHandle = ::OpenTraceA(&traceSession);
 				if (openedTraceHandle != INVALID_PROCESSTRACE_HANDLE)
 				{
-					DWORD dwThreadId = 0; 
+					DWORD dwThreadId = 0;
 					HANDLE hThread = ::CreateThread(
 						NULL,
 						0,
@@ -232,11 +224,11 @@ void main(void)
 						(LPVOID)&openedTraceHandle,
 						0,
 						&dwThreadId
-					); 
+					);
 
 					if (hThread != INVALID_HANDLE_VALUE)
 					{
-						std::cout << "Trace opened." << std::endl; 
+						std::cout << "Trace opened." << std::endl;
 
 						if (response == ERROR_SUCCESS)
 						{
@@ -244,8 +236,8 @@ void main(void)
 							getchar();
 
 							ControlTrace(
-								openedTraceHandle, 
-								NULL, 
+								openedTraceHandle,
+								NULL,
 								ptrEventTraceProps,
 								EVENT_TRACE_CONTROL_STOP);
 						}
@@ -255,11 +247,11 @@ void main(void)
 						}
 					}
 
-					::CloseTrace(openedTraceHandle); 
+					::CloseTrace(openedTraceHandle);
 				}
 				else
 				{
-					std::cout << "Failed to open the tracing session. Error " << ::GetLastError() << std::endl; 
+					std::cout << "Failed to open the tracing session. Error " << ::GetLastError() << std::endl;
 				}
 
 				// disable the trace. 
@@ -276,17 +268,95 @@ void main(void)
 			}
 			else
 			{
-				std::cout << "Failed to enable a trace. Error " << response << std::endl; 
+				std::cout << "Failed to enable a trace. Error " << response << std::endl;
 			}
 
-			::StopTraceA(startTraceHandle, name, ptrEventTraceProps); 
+			::StopTraceA(startTraceHandle, name, ptrEventTraceProps);
 		}
 		else
 		{
-			std::cout << "Failed to start trace, error " << response << std::endl; 
+			std::cout << "Failed to start trace, error " << response << std::endl;
 		}
 
-		::LocalFree(ptrEventTraceProps); 
+		::LocalFree(ptrEventTraceProps);
 	}
+}
 
+void ScanCurrent()
+{
+	WSADATA wsaData;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) == 0) {
+		// Handle error
+
+		PMIB_TCPTABLE_OWNER_PID pTcpTable;
+
+		// call this with null initially to get the structure size we need. 
+		DWORD dwNeededSize = 0; 
+		auto retVal = GetExtendedTcpTable(
+			NULL, // pass null for now. 
+			&dwNeededSize, // get back the needed size.
+			false, // don't sort
+			AF_INET, // ipv4
+			TCP_TABLE_OWNER_PID_ALL, // https://learn.microsoft.com/en-us/windows/win32/api/iprtrmib/ne-iprtrmib-tcp_table_class
+			0
+		); 
+		if (retVal == ERROR_INSUFFICIENT_BUFFER)
+		{
+			pTcpTable = (PMIB_TCPTABLE_OWNER_PID)::HeapAlloc(GetProcessHeap(), 0, dwNeededSize);
+			if (pTcpTable)
+			{
+				retVal = GetExtendedTcpTable(
+					pTcpTable, // not null now
+					&dwNeededSize, 
+					false, // don't sort
+					AF_INET, // ipv4
+					TCP_TABLE_OWNER_PID_ALL, // https://learn.microsoft.com/en-us/windows/win32/api/iprtrmib/ne-iprtrmib-tcp_table_class
+					0
+				);
+				if (retVal == NO_ERROR)
+				{
+					for (int i = 0; i < pTcpTable->dwNumEntries; i++)
+					{
+						auto entry = pTcpTable->table[i]; 
+						if (entry.dwOwningPid == pid)
+						{
+							char szLocalAddr[INET_ADDRSTRLEN]; 
+							char szRemoteAddr[INET_ADDRSTRLEN]; 
+							struct in_addr addr; 
+							addr.S_un.S_addr = entry.dwLocalAddr; 
+
+							auto localPort = ntohs(entry.dwLocalPort);
+							inet_ntop(AF_INET, &addr, szLocalAddr, sizeof(szLocalAddr));
+
+							addr.S_un.S_addr = entry.dwRemoteAddr; 
+							auto remotePort = ntohs(entry.dwRemotePort); 
+							inet_ntop(AF_INET, &addr, szRemoteAddr, sizeof(szRemoteAddr));
+
+							printf("Connected local: %s:%d\n", szLocalAddr, localPort); 
+							printf("Connected remote: %s:%d\n", szRemoteAddr, remotePort);
+							printf("\n"); 
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+
+void main(void)
+{
+	//std::ifstream input("parsed.txt"); 
+
+	//std::string eventName; 
+	//int id; 
+	//while (input >> eventName >> id)
+	//{
+	//	mp.insert(std::pair<int,std::string>(id, eventName.substr(0, eventName.size()-1)));
+	//}
+
+	ScanCurrent(); 
+
+	
+	StartMonitoring(); 
 }
