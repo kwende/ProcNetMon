@@ -130,6 +130,9 @@
   <ItemGroup>
     <ClCompile Include="ProcNetMon.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="parsed.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

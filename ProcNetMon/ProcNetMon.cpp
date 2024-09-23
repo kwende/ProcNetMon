@@ -13,6 +13,11 @@
 #include <tdh.h>
 #include <iostream>
 #include <ws2tcpip.h>
+#include <fstream>
+#include <map>
+#include <string>
+
+std::map<int, std::string> mp;
 
 // you can use logman to find this. 
 // Microsoft-Windows-TCPIP
@@ -23,9 +28,20 @@ void WINAPI OnEvent(PEVENT_RECORD pEventRecord)
 {
 	// Get event metadata using TDH API
 	int id = pEventRecord->EventHeader.EventDescriptor.Id; 
+	int procId = pEventRecord->EventHeader.ProcessId;
 
-	//if (id == 1370)
+	//auto it = mp.find(id);
+	//if (it != mp.end()) 
+	//{
+	//	printf("Event %s\n", it->second); 
+	//}	
+
+	//wevtutil gp Microsoft-Windows-TCPIP /ge /gm:true > TcpIpProviderManifest.xml
+	// for the ids. 
+	if(procId == 28792)
 	{
+		//printf("Event Id: %d\n", id);
+
 		ULONG bufferSize = 0;
 		PTRACE_EVENT_INFO pInfo = NULL;
 		ULONG status = TdhGetEventInformation(pEventRecord, 0, NULL, pInfo, &bufferSize);
@@ -45,6 +61,7 @@ void WINAPI OnEvent(PEVENT_RECORD pEventRecord)
 				auto eventProperty = &pInfo->EventPropertyInfoArray[i];
 
 				auto propertyName = (LPWSTR)((PBYTE)pInfo + eventProperty->NameOffset);
+				//wprintf(L"\tPropertyName: %ws\n", propertyName);
 
 				::ZeroMemory(pPropertyBuffer, BUF_SIZE);
 				PROPERTY_DATA_DESCRIPTOR propertyDataDesc;
@@ -62,19 +79,23 @@ void WINAPI OnEvent(PEVENT_RECORD pEventRecord)
 
 				if (result == ERROR_SUCCESS)
 				{
+					//wprintf(L"\tPropertyName: %ws\n", propertyName);
 					/*
 					wprintf(L"\tPropertyName: %ws\n", propertyName);
 					wprintf(L"\tLength: %d\n", eventProperty->length);
 					wprintf(L"\tInType: %u\n", eventProperty->nonStructType.InType);*/
-
+					printf("\tProperty type: %d\n", eventProperty->nonStructType.InType); 
 					switch (eventProperty->nonStructType.InType)
 					{
-					case 0x0e: // binary data type
+					case TDH_INTYPE_BINARY: // binary data type
 					{
-						if (wcscmp(propertyName, L"SourceAddress") == 0 ||
-							wcscmp(propertyName, L"DestinationAddress") == 0 ||
-							wcscmp(propertyName, L"LocalAddress") == 0 ||
-							wcscmp(propertyName, L"RemoteAddress") == 0)
+						//TDH_INTYPE_UINT32
+						//if (wcscmp(propertyName, L"SourceAddress") == 0 ||
+						//	wcscmp(propertyName, L"DestinationAddress") == 0 ||
+						//	wcscmp(propertyName, L"LocalAddress") == 0 ||
+						//	wcscmp(propertyName, L"RemoteAddress") == 0)
+						//{
+						if (id == 1002 || id == 1009 || id == 1003)
 						{
 							struct sockaddr_in remoteAddr;
 							memcpy(&remoteAddr, pPropertyBuffer, sizeof(remoteAddr));
@@ -83,12 +104,22 @@ void WINAPI OnEvent(PEVENT_RECORD pEventRecord)
 							char ipAddress[INET_ADDRSTRLEN];
 							inet_ntop(AF_INET, &(remoteAddr.sin_addr), ipAddress, INET_ADDRSTRLEN);
 
-							int procId = pEventRecord->EventHeader.ProcessId; 
-
-							wprintf(L"\tPropertyName: %ws\n", propertyName);
-							printf("event id: %d, proc id: %d\n", id, procId);
-							printf("%s:%d\n", ipAddress, port);
+							//printf("proc id: %d\n", procId);
+							if (id == 1002)
+							{
+								printf("\t\tTcpRequestConnect %s:%d\n", ipAddress, port);
+							}
+							else if (id == 1009)
+							{
+								printf("\t\tTcpCloseEndpoint %s:%d\n", ipAddress, port);
+							}
+							else if (id == 1003)
+							{
+								printf("\t\tTcpInspectConnectComplete %s:%d\n", ipAddress, port);
+							}
 						}
+
+						//}
 						break; 
 					}
 					}
@@ -115,12 +146,22 @@ DWORD WINAPI ThreadProc(LPVOID lpParameter)
 	return 0; 
 }
 
+
 void main(void)
 {
+	std::ifstream input("parsed.txt"); 
+
+	std::string eventName; 
+	int id; 
+	while (input >> eventName >> id)
+	{
+		mp.insert(std::pair<int,std::string>(id, eventName.substr(0, eventName.size()-1)));
+	}
+
 	EVENT_TRACE_LOGFILEA traceSession; 
 	::ZeroMemory(&traceSession, sizeof(traceSession)); 
 
-	LPSTR name = (LPSTR)"dooo"; 
+	LPSTR name = (LPSTR)"duudi"; 
 
 	// The following defines the session......
 	// 
