@@ -344,7 +344,7 @@ void ScanCurrent()
 }
 
 
-void main(void)
+void main(int argc, char* args[])
 {
 	//std::ifstream input("parsed.txt"); 
 
@@ -355,8 +355,11 @@ void main(void)
 	//	mp.insert(std::pair<int,std::string>(id, eventName.substr(0, eventName.size()-1)));
 	//}
 
-	ScanCurrent(); 
+	if (argc == 2)
+	{
+		pid = ::atoi(args[1]); 
 
-	
-	StartMonitoring(); 
+		ScanCurrent();
+		StartMonitoring();
+	}
 }
